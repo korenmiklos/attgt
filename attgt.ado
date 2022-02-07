@@ -1,4 +1,4 @@
-*! version 0.1.0 07feb2022
+*! version 0.2.0 07feb2022
 program attgt, eclass
 	syntax varlist [if] [in], treatment(varname) [ipw(varlist)]	[aggregate(string)] [absorb(varlist)] [pre(integer 999)] [post(integer 999)] [reps(int 199)] [notyet] [debug] [cluster(varname)] [limitcontrol(string)] [weightprefix(string)] [treatment2(varname)]
 	marksample touse

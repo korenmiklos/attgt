@@ -5,6 +5,12 @@
 - `attgt` *depvars* [*if*] [*in*] , **treatment**(*varname*) **aggregate**(*method*) [**pre**(#) **post**(#) **limitcontrol**(*expression*) **ipw**(*varlist*)]
 
 `att` computes average treatment effect parameters in Difference in Differences setups with more than two periods and with variation in treatment timing using the methods developed in Callaway and Sant'Anna (2021) <doi:10.1016/j.jeconom.2020.12.001>. The main parameters are group-time average treatment effects which are the average treatment effect for a particular group at a a particular time. These can be aggregated into a fewer number of treatment effect parameters, and the package deals with the cases where there is selective treatment timing, dynamic treatment effects, calendar time effects, or combinations of these.
+
+The package can be installed with
+```
+net install attgt, from(https://raw.githubusercontent.com/korenmiklos/attgt/v0.2/)
+```
+
 # Options
 ## Parameters
 Parameter | Description
