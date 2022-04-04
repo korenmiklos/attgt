@@ -1,4 +1,4 @@
-*! version 0.2.1 04apr2022
+*! version 0.2.2 04apr2022
 program attgt, eclass
 	syntax varlist [if] [in], treatment(varname) [ipw(varlist)]	[aggregate(string)] [absorb(varlist)] [pre(integer 999)] [post(integer 999)] [reps(int 199)] [notyet] [debug] [cluster(varname)] [limitcontrol(string)] [weightprefix(string)] [treatment2(varname)]
 	marksample touse
@@ -117,6 +117,46 @@ program attgt, eclass
 		else {
 			local cweight `one'
 		}
+		* FIXME: this only calculate IPW for one set of control group.
+		if ("`ipw'" != "") {
+			tempvar TD phat ph2 ph3
+			local treated (`group'==`g')
+			if ("`limitcontrol'" != "") {
+				local lc (`lc_var' & !missing(`lc_var') & `time'==`g')
+			}
+			else {
+				local lc 1
+			}
+			if ("`tyet'"=="") {
+				if "`treatment2'" != "" {
+					local control (`group2'==`g')
+				}
+				else {
+					* never treated
+					local control missing(`group') & (`lc')
+				}
+			}
+			else {
+					* not yet treated
+					local control (missing(`group') | (`group' > `g')) & (`lc')
+			}
+			quietly generate byte `TD' = `treated'
+		 	capture probit `TD' `ipw' if (`treated' | `control') & `touse' & (`time' == `g')
+			if (_rc==0) {
+				quietly predict `phat' if `control' & `touse' & (`time' == `g'), pr
+				* if probit predicts failure or success perfectly, use boundary values
+				quietly egen `ph2' = mean(`TD') if (`treated' | `control') & `touse' & (`time' == `g') & missing(`phat')
+				quietly replace `phat' = `ph2' if `control' & `touse' & (`time' == `g') & missing(`phat')
+				* trim values to not give extreme weights to any one observation
+				quietly replace `phat' = 0.9 if (`phat' > 0.9 & !missing(`phat')) & `control' & `touse' & (`time' == `g')
+				quietly egen `ph3' = max(`phat' / (1 - `phat')) if `control' & `touse', by(`i')
+				quietly replace `ipweight' = `ph3' if `control' & `touse'
+			}
+			else if (_rc==2000) {
+				* if cannot estimate propensity scores due to perfect fit of regression, no observations will be used as a control
+				quietly replace `ipweight' = 0 if `control' & `touse'
+			}
+		}
 		foreach t in `ts' {
 		if (`g'!=`t') & (`g'>`min_time') & (`t' - `g' <= `post') & (`g' - `t' <= `pre') {
 			* within (g,t), panel has to be balanced
@@ -145,35 +185,15 @@ program attgt, eclass
 			}
 			else {
 					* not yet treated
-					* QUESTION: > or >=
 					local control (missing(`group') | (`group' > max(`g', `t'))) & (`timing') & (`lc')
-			}
-
-			if ("`ipw'" != "") {
-				tempvar TD phat ph2
-				quietly generate byte `TD' = `treated'
-				capture probit `TD' `ipw' if (`treated' | `control') & `touse' & (`time' == `g')
-				if (_rc==0) {
-					quietly predict `phat' if `control' & `touse' & (`time' == `g'), pr
-					* if probit predicts failure or success perfectly, use boundary values
-					quietly egen `ph2' = mean(`TD') if (`treated' | `control') & `touse' & (`time' == `g') & missing(`phat')
-					quietly replace `phat' = `ph2' if `control' & `touse' & (`time' == `g') & missing(`phat')
-					* trim values to not give extreme weights to any one observation
-					quietly replace `phat' = 0.9 if (`phat' > 0.9 & !missing(`phat')) & `control' & `touse' & (`time' == `g')
-					quietly replace `ipweight' = `phat' / (1 - `phat') if `control' & `touse' & (`time' == `g')
-					quietly replace `ipweight' = `leadlag2'.`ipweight' if `control' & `touse' & (`leadlag2'.`time' == `g') & !missing(`leadlag2'.`ipweight')
-				}
-				else if (_rc==2000) {
-					* if cannot estimate propensity scores due to perfect fit of regression, no observations will be used as a control
-					quietly replace `ipweight' = 0 if `control' & `touse' & (`time' == `g')
-					quietly replace `ipweight' = 0 if `control' & `touse' & (`leadlag2'.`time' == `g') & !missing(`leadlag2'.`ipweight')
-				}
 			}
 
 			quietly count if `treated' & `touse'
 			local n_treated = r(N)/2
-			quietly summarize `ipweight' if `control' & `touse' & `ipweight' != 0 & !missing(`ipweight')
-			local sumw_control = r(sum)/2
+			tempvar sumw_control ctrl
+			quietly generate byte `ctrl' = `control'
+			quietly egen `sumw_control' = total(`ipweight') if `ctrl' & `touse', by(`time')
+			quietly count if `control' & `touse' & `ipweight'!=0 & !missing(`ipweight')
 			local n_control = r(N)/2
 			local n_`g'_`t' = `n_treated' * `n_control' / (`n_treated' + `n_control')
 

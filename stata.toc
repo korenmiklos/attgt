@@ -1,4 +1,4 @@
 v 3
 d Koren, Miklós (maintainer)
-d https://github.com/korenmiklos/attgt/tree/v0.2.1
+d https://github.com/korenmiklos/attgt/tree/v0.2.2
 p attgt ATTGT - Average Treatment Effects with Staggered Treatment
