@@ -1,4 +1,4 @@
-*! version 0.2.0 07feb2022
+*! version 0.2.1 04apr2022
 program attgt, eclass
 	syntax varlist [if] [in], treatment(varname) [ipw(varlist)]	[aggregate(string)] [absorb(varlist)] [pre(integer 999)] [post(integer 999)] [reps(int 199)] [notyet] [debug] [cluster(varname)] [limitcontrol(string)] [weightprefix(string)] [treatment2(varname)]
 	marksample touse
@@ -150,19 +150,20 @@ program attgt, eclass
 			}
 
 			if ("`ipw'" != "") {
-				tempvar TD phat
+				tempvar TD phat ph2
 				quietly generate byte `TD' = `treated'
 				capture probit `TD' `ipw' if (`treated' | `control') & `touse' & (`time' == `g')
 				if (_rc==0) {
 					quietly predict `phat' if `control' & `touse' & (`time' == `g'), pr
-					quietly replace `phat' = 0.9 if `phat' > 0.9 & `control' & `touse' & (`time' == `g')
+					* if probit predicts failure or success perfectly, use boundary values
+					quietly egen `ph2' = mean(`TD') if (`treated' | `control') & `touse' & (`time' == `g') & missing(`phat')
+					quietly replace `phat' = `ph2' if `control' & `touse' & (`time' == `g') & missing(`phat')
+					* trim values to not give extreme weights to any one observation
+					quietly replace `phat' = 0.9 if (`phat' > 0.9 & !missing(`phat')) & `control' & `touse' & (`time' == `g')
 					quietly replace `ipweight' = `phat' / (1 - `phat') if `control' & `touse' & (`time' == `g')
-					quietly replace `ipweight' = `leadlag2'.`ipweight' if `control' & `touse' & (`leadlag2'.`time' == `g')
+					quietly replace `ipweight' = `leadlag2'.`ipweight' if `control' & `touse' & (`leadlag2'.`time' == `g') & !missing(`leadlag2'.`ipweight')
 				}
-				else {
-					* invalid propensity score estimates, cannot use this control group
-					quietly replace `ipweight' = 0 if `control' & `touse'
-				}
+				* if cannot estimate propensity scores, all observations will be used as a control
 			}
 
 			quietly count if `treated' & `touse'
