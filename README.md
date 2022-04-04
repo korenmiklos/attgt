@@ -8,7 +8,7 @@
 
 The package can be installed with
 ```
-net install attgt, from(https://raw.githubusercontent.com/korenmiklos/attgt/v0.2/)
+net install attgt, from(https://raw.githubusercontent.com/korenmiklos/attgt/v0.2.1/)
 ```
 
 # Options
