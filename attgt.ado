@@ -163,7 +163,11 @@ program attgt, eclass
 					quietly replace `ipweight' = `phat' / (1 - `phat') if `control' & `touse' & (`time' == `g')
 					quietly replace `ipweight' = `leadlag2'.`ipweight' if `control' & `touse' & (`leadlag2'.`time' == `g') & !missing(`leadlag2'.`ipweight')
 				}
-				* if cannot estimate propensity scores, all observations will be used as a control
+				else if (_rc==2000) {
+					* if cannot estimate propensity scores due to perfect fit of regression, no observations will be used as a control
+					quietly replace `ipweight' = 0 if `control' & `touse' & (`time' == `g')
+					quietly replace `ipweight' = 0 if `control' & `touse' & (`leadlag2'.`time' == `g') & !missing(`leadlag2'.`ipweight')
+				}
 			}
 
 			quietly count if `treated' & `touse'
