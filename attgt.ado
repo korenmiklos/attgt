@@ -110,6 +110,13 @@ program attgt, eclass
 	* FIXME: check that g = min_time is not used as control
 	* create design matrix
 	display "Generating weights..."
+	if ("`ipw'" != "") {
+		tempvar TD_global phat_global
+		tempname AIC_global
+		quietly generate `TD_global' = (`group' == `time') if ((`limitcontrol') | (`group' == `time')) & `touse'
+	 	capture probit `TD_global' `ipw' i.`time' if ((`limitcontrol') | (`group' == `time')) & `touse'
+		quietly predict `phat_global' if ((`limitcontrol') | (`group' == `time')) & `touse', pr
+	}
 	foreach g in `gs' {
 		if ("`weightprefix'" != "") {
 			local cweight `weightprefix'`g'
@@ -120,6 +127,7 @@ program attgt, eclass
 		* FIXME: this only calculate IPW for one set of control group.
 		if ("`ipw'" != "") {
 			tempvar TD phat ph2 ph3
+			tempname AIC
 			local treated (`group'==`g')
 			if ("`limitcontrol'" != "") {
 				local lc (`lc_var' & !missing(`lc_var') & `time'==`g')
@@ -142,20 +150,22 @@ program attgt, eclass
 			}
 			quietly generate byte `TD' = `treated'
 		 	capture probit `TD' `ipw' if (`treated' | `control') & `touse' & (`time' == `g')
-			if (_rc==0) {
+			* only use well fitting probits
+			if (_rc==0) & (e(p) < 0.05) {
 				quietly predict `phat' if `control' & `touse' & (`time' == `g'), pr
 				* if probit predicts failure or success perfectly, use boundary values
 				quietly egen `ph2' = mean(`TD') if (`treated' | `control') & `touse' & (`time' == `g') & missing(`phat')
 				quietly replace `phat' = `ph2' if `control' & `touse' & (`time' == `g') & missing(`phat')
 				* trim values to not give extreme weights to any one observation
-				quietly replace `phat' = 0.9 if (`phat' > 0.9 & !missing(`phat')) & `control' & `touse' & (`time' == `g')
-				quietly egen `ph3' = max(`phat' / (1 - `phat')) if `control' & `touse', by(`i')
-				quietly replace `ipweight' = `ph3' if `control' & `touse'
+				quietly replace `phat' = 0.999 if (`phat' > 0.999 & !missing(`phat')) & `control' & `touse' & (`time' == `g')
 			}
-			else if (_rc==2000) {
+			* otherwise stick to globally estimated probit
+			else {
 				* if cannot estimate propensity scores due to perfect fit of regression, no observations will be used as a control
-				quietly replace `ipweight' = 0 if `control' & `touse'
+				quietly generate `phat' = `phat_global' if `control' & `touse'
 			}
+			quietly egen `ph3' = max(`phat' / (1 - `phat')) if `control' & `touse', by(`i')
+			quietly replace `ipweight' = `ph3' if `control' & `touse'
 		}
 		foreach t in `ts' {
 		if (`g'!=`t') & (`g'>`min_time') & (`t' - `g' <= `post') & (`g' - `t' <= `pre') {
