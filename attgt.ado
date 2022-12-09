@@ -1,4 +1,4 @@
-*! version 0.2.2 04apr2022
+*! version 0.3.0 09dec2022
 program attgt, eclass
 	syntax varlist [if] [in], treatment(varname) [ipw(varlist)]	[aggregate(string)] [absorb(varlist)] [pre(integer 999)] [post(integer 999)] [reps(int 199)] [notyet] [debug] [cluster(varname)] [limitcontrol(string)] [weightprefix(string)] [treatment2(varname)]
 	marksample touse
@@ -10,7 +10,7 @@ program attgt, eclass
 	if ("`aggregate'"=="") {
 		local aggregate gt
 	}
-	assert inlist("`aggregate'", "gt", "e", "att")
+	assert inlist("`aggregate'", "gt", "e", "att", "prepost")
 	if ("`aggregate'"=="att") {
 		* if we only compute ATT, no need to check pre-trends
 		local pre 0
@@ -214,8 +214,6 @@ program attgt, eclass
 		}
 	}
 
-	summarize `ipweight', detail
-
 	if ("`aggregate'"=="e") {
 		tempname n_e
 		forvalues e = `max_pre'(-1)1 {
@@ -284,6 +282,43 @@ program attgt, eclass
 			quietly replace `control' = `control' / `n' 
 			local tweights att
 			local cweights control
+	}
+	if ("`aggregate'"=="prepost") {
+		tempname n1 n2
+		tempvar att wce att1 wce1 att2 wce2
+		scalar `n1' = 0
+		quietly generate `att1' = 0
+		quietly generate `wce1' = 0
+		forvalues e = `max_pre'(-1)1 {
+			foreach g in `gs' {
+				local t = `g' - `e'
+				if (`t' >= `min_time') & ("`n_`g'_`t''" != "") {
+					quietly replace `att1' = `att1' - `n_`g'_`t''*`treated_`g'_`t'' if !missing(`treated_`g'_`t'') & `touse'
+					quietly replace `wce1' = `wce1' - `n_`g'_`t''*`control_`g'_`t'' if !missing(`control_`g'_`t'') & `touse'
+					scalar `n1' = `n1' + `n_`g'_`t''
+				}
+				* add the zeros
+				quietly count if (`time' == `g') & (`group' == `g')
+				scalar `n1' = `n1' + r(N)/2
+			}
+		}
+		scalar `n2' = 0
+		quietly generate `att2' = 0
+		quietly generate `wce2' = 0
+		forvalues e = 1/`max_post' {
+			foreach g in `gs' {
+				local t = `g' + `e'
+				if (`t' <= `max_time') & ("`n_`g'_`t''" != "") {
+					quietly replace `att2' = `att2' + `n_`g'_`t''*`treated_`g'_`t'' if !missing(`treated_`g'_`t'') & `touse'
+					quietly replace `wce2' = `wce2' + `n_`g'_`t''*`control_`g'_`t'' if !missing(`control_`g'_`t'') & `touse'
+					scalar `n2' = `n2' + `n_`g'_`t''
+				}
+			}
+		}
+		quietly generate `att' = `att1' / `n1' + `att2' / `n2' 
+		quietly generate `wce' = `wce1' / `n1' + `wce2' / `n2'
+		local tweights `tweights' att
+		local cweights `cweights' wce
 	}
 
 	tempvar esample

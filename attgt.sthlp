@@ -15,7 +15,7 @@
 
 {pstd}The package can be installed with{p_end}
 
-{phang2}{cmd}. net install attgt, from(https://raw.githubusercontent.com/korenmiklos/attgt/v0.2.3/)
+{phang2}{cmd}. net install attgt, from(https://raw.githubusercontent.com/korenmiklos/attgt/v0.3.0/)
 
 
 
@@ -43,7 +43,8 @@
 {synopthdr:Method}
 {synoptline}
 {synopt:{bf:gt}}(default) separate ATT for each treatment group {it:g} and calendar time {it:t}{p_end}
-{synopt:{bf:att}}one overall ATT{p_end}
+{synopt:{bf:att}}one overall ATT, relative to period before treatment{p_end}
+{synopt:{bf:prepost}}one overall ATT, relative to the average of {it:pre} periods before treatment{p_end}
 {synopt:{bf:e}}aggregate ATT by event time (0 denotes the period {it:before} treatment){p_end}
 {synoptline}
 
@@ -107,4 +108,3 @@
 {text}{phang2}Abadie, Alberto. 2005. “Semiparametric Difference-in-Differences Estimators.” {it:The Review of Economic Studies} 72 (1): 1–19.{p_end}
 {phang2}Callaway, Brantly, and Pedro H. C. Sant’Anna. 2021. “Difference-in-Differences with Multiple Time Periods.” Journal of Econometrics 225 (2): 200–230.{p_end}
 {phang2}Rios-Avila, Fernando, Pedro H. C. Sant’Anna, Brantly Callaway, and Asjad Naqvi. 2021. “csdid and drdid: Doubly Robust Differences-in-Differences with Multiple Time Periods. [software]” Available at {browse "https://github.com/friosavila/csdid_drdid":https://github.com/friosavila/csdid_drdid}{p_end}
-

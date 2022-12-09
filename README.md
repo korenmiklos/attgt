@@ -8,7 +8,7 @@
 
 The package can be installed with
 ```
-net install attgt, from(https://raw.githubusercontent.com/korenmiklos/attgt/v0.2.3/)
+net install attgt, from(https://raw.githubusercontent.com/korenmiklos/attgt/v0.3.0/)
 ```
 
 # Options
@@ -24,7 +24,8 @@ Parameter | Description
 Method | Description
 ------|------------
 **gt** | (default) separate ATT for each treatment group *g* and calendar time *t*
-**att** | one overall ATT
+**att** | one overall ATT, relative to period before treatment
+**prepost** | one overall ATT, relative to the average of *pre* periods before treatment
 **e** | aggregate ATT by event time (0 denotes the period *before* treatment)
 
 ## Options
