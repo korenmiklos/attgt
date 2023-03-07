@@ -2,7 +2,7 @@
 
 # Syntax
 
-- `attgt` *depvars* [*if*] [*in*] , **treatment**(*varname*) **aggregate**(*method*) [**pre**(#) **post**(#) **ipw**(*varlist*)]
+- `attgt` *depvars*, **treatment**(*varname*) **aggregate**(*method*) [**pre**(#) **post**(#) **ipw**(*varlist*) **reps**(#)]
 
 `att` computes average treatment effect parameters in Difference in Differences setups with more than two periods and with variation in treatment timing using the methods developed in Callaway and Sant'Anna (2021) <doi:10.1016/j.jeconom.2020.12.001>. The main parameters are group-time average treatment effects which are the average treatment effect for a particular group at a particular time. These can be aggregated into a fewer number of treatment effect parameters, and the package deals with the cases where there is selective treatment timing, dynamic treatment effects, calendar time effects, or combinations of these.
 
@@ -41,6 +41,14 @@ Option | Description
 The command requires a panel dataset declared by `xtset`. 
 
 The command also returns, as part of `e()`, the coefficients and standard errors. See `ereturn list` after running the command.
+
+The command does not allow for `if` and `in` clauses. If you need to limit the sample, use
+```
+preserve
+keep if ... in ...
+attgt ...
+restore
+``` 
 
 # Examples
 ```

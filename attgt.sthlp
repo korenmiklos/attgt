@@ -68,6 +68,13 @@
 
 {pstd}The command also returns, as part of {cmd:e()}, the coefficients and standard errors. See {cmd:ereturn list} after running the command.{p_end}
 
+{pstd}The command does not allow for {cmd:if} and {cmd:in} clauses. If you need to limit the sample, use{p_end}
+
+{phang2}{cmd}. preserve
+keep if ... in ...
+attgt ...
+restore
+
 
 {marker examples}{...}
 {title:Examples}

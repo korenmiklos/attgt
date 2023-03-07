@@ -1,7 +1,6 @@
 *! version 0.4.0 07mar2023
 program attgt, eclass
-	syntax varlist [if] [in], treatment(varname) [ipw(varlist)]	[aggregate(string)] [absorb(varlist)] [pre(integer 999)] [post(integer 999)] [reps(int 199)] [notyet] [debug] [cluster(varname)] [weightprefix(string)] [treatment2(varname)]
-	marksample touse
+	syntax varlist, treatment(varname) [ipw(varlist)]	[aggregate(string)] [pre(integer 999)] [post(integer 999)] [reps(int 199)] [notyet] [debug] [cluster(varname)] [weightprefix(string)] [treatment2(varname)]
 
 	* boostrap
 	local B `reps'
@@ -23,7 +22,6 @@ program attgt, eclass
 	xtset
 	local i = r(panelvar)
 	local time = r(timevar)
-	markout `touse' `i' `time' `treatment' `varlist' `ipw'
 
 	if ("`treatment2'" != "") {
 		capture assert "`tyet'" == ""
@@ -32,7 +30,7 @@ program attgt, eclass
 			error 9
 		}
 		tempvar group2
-		quietly egen `group2' = min(cond(`treatment2', `time'-1, .)) if `touse', by(`i')
+		quietly egen `group2' = min(cond(`treatment2', `time'-1, .)), by(`i')
 		* FIXME: range of group2 may not be the same as group. what to do with these treatment times?
 	}
 
@@ -55,11 +53,11 @@ program attgt, eclass
 
 	tempvar group _alty_ _y_ flip
 	tempname b V v att co tr _tr_
-	quietly egen `group' = min(cond(`treatment', `time'-1, .)) if `touse', by(`i')
-	quietly summarize `time' if `touse'
+	quietly egen `group' = min(cond(`treatment', `time'-1, .)), by(`i')
+	quietly summarize `time'
 	local min_time = r(min)
 	local max_time = r(max)
-	quietly summarize `group' if `touse'
+	quietly summarize `group'
 	local min_g = r(min)
 	local max_g = r(max)
 	* feasible event windows
@@ -67,22 +65,22 @@ program attgt, eclass
 	local max_post = min(`max_time' - `min_g', `post')
 	
 	* estimate ATT(g,t) as eq 2.6 in https://pedrohcgs.github.io/files/Callaway_SantAnna_2020.pdf
-	quietly levelsof `group' if `touse' & `group' > `min_time', local(gs)
-	quietly levelsof `time' if `touse', local(ts)
+	quietly levelsof `group' if `group' > `min_time', local(gs)
+	quietly levelsof `time', local(ts)
 
 	* check that valid weights exist for each treatment group
 	if ("`weightprefix'" != "") {
 		foreach g in `gs' {
 			confirm numeric variable `weightprefix'`g'
-			capture assert `weightprefix'`g' >= 0 if `touse', fast
+			capture assert `weightprefix'`g' >= 0, fast
 			if _rc {
 				display in red "Weights must be non-negative. Offending weight:  `weightprefix'`g'"
 				error 9
 			}
 			tempvar i1 i2
 			* check that weight does not vary within ivar
-			quietly egen `i1' = group(`i') if `touse'
-			quietly egen `i2' = group(`i' `weightprefix'`g') if `touse'
+			quietly egen `i1' = group(`i')
+			quietly egen `i2' = group(`i' `weightprefix'`g')
 			quietly summarize `i1'
 			local m1 = r(max)
 			quietly summarize `i2'
@@ -120,9 +118,9 @@ program attgt, eclass
 			local control (missing(`group') | (`group' > `time'))
 		}
 		* NB: without limitcontrol this was bad because included post-treatment years as control
-		quietly generate `TD_global' = (`group' == `time') if (`control' | (`group' == `time')) & `touse'
-	 	capture probit `TD_global' `ipw' i.`time' if (`control' | (`group' == `time')) & `touse'
-		quietly predict `phat_global' if (`control' | (`group' == `time')) & `touse', pr
+		quietly generate `TD_global' = (`group' == `time') if (`control' | (`group' == `time'))
+	 	capture probit `TD_global' `ipw' i.`time' if (`control' | (`group' == `time'))
+		quietly predict `phat_global' if (`control' | (`group' == `time')), pr
 	}
 	foreach g in `gs' {
 		if ("`weightprefix'" != "") {
@@ -150,23 +148,23 @@ program attgt, eclass
 				local control (missing(`group') | (`group' > `g'))
 			}
 			quietly generate byte `TD' = `treated'
-		 	capture probit `TD' `ipw' if (`treated' | `control') & `touse' & (`time' == `g')
+		 	capture probit `TD' `ipw' if (`treated' | `control') & (`time' == `g')
 			* only use well fitting probits
 			if (_rc==0) & (e(p) < 0.05) {
-				quietly predict `phat' if `control' & `touse' & (`time' == `g'), pr
+				quietly predict `phat' if `control' & (`time' == `g'), pr
 				* if probit predicts failure or success perfectly, use boundary values
-				quietly egen `ph2' = mean(`TD') if (`treated' | `control') & `touse' & (`time' == `g') & missing(`phat')
-				quietly replace `phat' = `ph2' if `control' & `touse' & (`time' == `g') & missing(`phat')
+				quietly egen `ph2' = mean(`TD') if (`treated' | `control') & (`time' == `g') & missing(`phat')
+				quietly replace `phat' = `ph2' if `control' & (`time' == `g') & missing(`phat')
 				* trim values to not give extreme weights to any one observation
-				quietly replace `phat' = 0.999 if (`phat' > 0.999 & !missing(`phat')) & `control' & `touse' & (`time' == `g')
+				quietly replace `phat' = 0.999 if (`phat' > 0.999 & !missing(`phat')) & `control' & (`time' == `g')
 			}
 			* otherwise stick to globally estimated probit
 			else {
 				* if cannot estimate propensity scores due to perfect fit of regression, no observations will be used as a control
-				quietly generate `phat' = `phat_global' if `control' & `touse'
+				quietly generate `phat' = `phat_global' if `control'
 			}
-			quietly egen `ph3' = max(`phat' / (1 - `phat')) if `control' & `touse', by(`i')
-			quietly replace `ipweight' = `ph3' if `control' & `touse'
+			quietly egen `ph3' = max(`phat' / (1 - `phat')) if `control', by(`i')
+			quietly replace `ipweight' = `ph3' if `control'
 		}
 		foreach t in `ts' {
 		if (`g'!=`t') & (`g'>`min_time') & (`t' - `g' <= `post') & (`g' - `t' <= `pre') {
@@ -189,18 +187,18 @@ program attgt, eclass
 				local control (missing(`group') | (`group' > max(`g', `t'))) & (`timing')
 			}
 
-			quietly count if `treated' & `touse'
+			quietly count if `treated'
 			local n_treated = r(N)/2
 			tempvar sumw_control ctrl
 			quietly generate byte `ctrl' = `control'
-			quietly egen `sumw_control' = total(`ipweight') if `ctrl' & `touse', by(`time')
-			quietly count if `control' & `touse' & `ipweight'!=0 & !missing(`ipweight')
+			quietly egen `sumw_control' = total(`ipweight') if `ctrl', by(`time')
+			quietly count if `control' & `ipweight'!=0 & !missing(`ipweight')
 			local n_control = r(N)/2
 			local n_`g'_`t' = `n_treated' * `n_control' / (`n_treated' + `n_control')
 
 			tempvar treated_`g'_`t' control_`g'_`t'
-			quietly generate `treated_`g'_`t'' = cond(`time'==`t', +1/`n_treated', -1/`n_treated') if `treated' & `touse'
-			quietly generate `control_`g'_`t'' = cond(`time'==`t', `ipweight'/`sumw_control', -`ipweight'/`sumw_control') if `control' & `touse'
+			quietly generate `treated_`g'_`t'' = cond(`time'==`t', +1/`n_treated', -1/`n_treated') if `treated'
+			quietly generate `control_`g'_`t'' = cond(`time'==`t', `ipweight'/`sumw_control', -`ipweight'/`sumw_control') if `control'
 		}
 		}
 	}
@@ -215,8 +213,8 @@ program attgt, eclass
 			foreach g in `gs' {
 				local t = `g' - `e'
 				if (`t' >= `min_time') & ("`n_`g'_`t''" != "") {
-					quietly replace `event_m`e'' = `event_m`e'' + `n_`g'_`t''*`treated_`g'_`t'' if !missing(`treated_`g'_`t'') & `touse'
-					quietly replace `wce_m`e'' = `wce_m`e'' + `n_`g'_`t''*`control_`g'_`t'' if !missing(`control_`g'_`t'') & `touse'
+					quietly replace `event_m`e'' = `event_m`e'' + `n_`g'_`t''*`treated_`g'_`t'' if !missing(`treated_`g'_`t'')
+					quietly replace `wce_m`e'' = `wce_m`e'' + `n_`g'_`t''*`control_`g'_`t'' if !missing(`control_`g'_`t'')
 					scalar `n_e' = `n_e' + `n_`g'_`t''
 				}
 			}
@@ -233,8 +231,8 @@ program attgt, eclass
 			foreach g in `gs' {
 				local t = `g' + `e'
 				if (`t' <= `max_time') & ("`n_`g'_`t''" != "") {
-					quietly replace `event_`e'' = `event_`e'' + `n_`g'_`t''*`treated_`g'_`t'' if !missing(`treated_`g'_`t'') & `touse'
-					quietly replace `wce_`e'' = `wce_`e'' + `n_`g'_`t''*`control_`g'_`t'' if !missing(`control_`g'_`t'') & `touse'
+					quietly replace `event_`e'' = `event_`e'' + `n_`g'_`t''*`treated_`g'_`t'' if !missing(`treated_`g'_`t'') 
+					quietly replace `wce_`e'' = `wce_`e'' + `n_`g'_`t''*`control_`g'_`t'' if !missing(`control_`g'_`t'')
 					scalar `n_e' = `n_e' + `n_`g'_`t''
 				}
 			}
@@ -263,8 +261,8 @@ program attgt, eclass
 			foreach g in `gs' {
 				foreach t in `ts' {
 				if (`g' < `t') & (`g'>`min_time') & (`t' - `g' <= `post') & ("`n_`g'_`t''" != "") {
-					quietly replace `att' = `att' + `n_`g'_`t''*`treated_`g'_`t'' if !missing(`treated_`g'_`t'') & `touse'
-					quietly replace `control' = `control' + `n_`g'_`t''*`control_`g'_`t'' if !missing(`control_`g'_`t'') & `touse'
+					quietly replace `att' = `att' + `n_`g'_`t''*`treated_`g'_`t'' if !missing(`treated_`g'_`t'')
+					quietly replace `control' = `control' + `n_`g'_`t''*`control_`g'_`t'' if !missing(`control_`g'_`t'')
 					scalar `n' = `n' + `n_`g'_`t''
 				}
 				}
@@ -284,8 +282,8 @@ program attgt, eclass
 			foreach g in `gs' {
 				local t = `g' - `e'
 				if (`t' >= `min_time') & ("`n_`g'_`t''" != "") {
-					quietly replace `att1' = `att1' - `n_`g'_`t''*`treated_`g'_`t'' if !missing(`treated_`g'_`t'') & `touse'
-					quietly replace `wce1' = `wce1' - `n_`g'_`t''*`control_`g'_`t'' if !missing(`control_`g'_`t'') & `touse'
+					quietly replace `att1' = `att1' - `n_`g'_`t''*`treated_`g'_`t'' if !missing(`treated_`g'_`t'')
+					quietly replace `wce1' = `wce1' - `n_`g'_`t''*`control_`g'_`t'' if !missing(`control_`g'_`t'')
 					scalar `n1' = `n1' + `n_`g'_`t''
 				}
 				* add the zeros
@@ -300,8 +298,8 @@ program attgt, eclass
 			foreach g in `gs' {
 				local t = `g' + `e'
 				if (`t' <= `max_time') & ("`n_`g'_`t''" != "") {
-					quietly replace `att2' = `att2' + `n_`g'_`t''*`treated_`g'_`t'' if !missing(`treated_`g'_`t'') & `touse'
-					quietly replace `wce2' = `wce2' + `n_`g'_`t''*`control_`g'_`t'' if !missing(`control_`g'_`t'') & `touse'
+					quietly replace `att2' = `att2' + `n_`g'_`t''*`treated_`g'_`t'' if !missing(`treated_`g'_`t'')
+					quietly replace `wce2' = `wce2' + `n_`g'_`t''*`control_`g'_`t'' if !missing(`control_`g'_`t'')
 					scalar `n2' = `n2' + `n_`g'_`t''
 				}
 			}
@@ -329,7 +327,7 @@ program attgt, eclass
 			local cw : word `n' of `cweights'
 
 			* set estimation sample
-			quietly replace `esample' = 1 if ((``tw'' != 0 & !missing(``tw'')) | (``cw'' != 0 & !missing(``cw''))) & `touse'
+			quietly replace `esample' = 1 if ((``tw'' != 0 & !missing(``tw'')) | (``cw'' != 0 & !missing(``cw'')))
 
 			display "Estimating `y': `tw'"
 
@@ -338,13 +336,13 @@ program attgt, eclass
 			matrix `att' = `tr' - `co'
 
 			* wild bootstrap with Rademacher weights requires flipping the error term
-			quietly replace `_y_' = cond(``tw''>0, `y' - `tr', `y') if ``tw'' !=0 & !missing(``tw'') & `touse'
-			quietly replace `_alty_' = cond(``tw''>0, `tr' - `y', -`y') if ``tw'' !=0 & !missing(``tw'') & `touse'
-			quietly replace `_y_' = cond(``cw''>0, `y' - `co', `y') if ``cw'' !=0 & !missing(``cw'') & `touse'
-			quietly replace `_alty_' = cond(``cw''>0, `co' - `y', -`y') if ``cw'' !=0 & !missing(``cw'') & `touse'
+			quietly replace `_y_' = cond(``tw''>0, `y' - `tr', `y') if ``tw'' !=0 & !missing(``tw'')
+			quietly replace `_alty_' = cond(``tw''>0, `tr' - `y', -`y') if ``tw'' !=0 & !missing(``tw'')
+			quietly replace `_y_' = cond(``cw''>0, `y' - `co', `y') if ``cw'' !=0 & !missing(``cw'')
+			quietly replace `_alty_' = cond(``cw''>0, `co' - `y', -`y') if ``cw'' !=0 & !missing(``cw'')
 
 			set seed 4399
-			mata: st_numscalar("`v'", bs_variance("`_y_' `_alty_' ``tw'' ``cw'' `cluster'", "`touse'", `B', 1))
+			mata: st_numscalar("`v'", bs_variance("`_y_' `_alty_' ``tw'' ``cw'' `cluster'", `B', 1))
 			matrix `b' = nullmat(`b'), `att'
 			matrix `V' = nullmat(`V'), `v'
 			local eqname `eqname' `y'
@@ -400,10 +398,10 @@ real scalar sum_product(string matrix vars)
 	return(colsum(X[1...,1] :* X[1...,2]))
 }
 
-real scalar bs_variance(string matrix vars, string scalar selectvar, real scalar B, real scalar cluster)
+real scalar bs_variance(string matrix vars, real scalar B, real scalar cluster)
 {
 	X = 0
-	st_view(X, ., vars, selectvar)
+	st_view(X, ., vars)
 	N = rows(X)
 	Y = J(N, 1, 0)
 	theta = J(B, 1, .)
