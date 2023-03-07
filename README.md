@@ -34,6 +34,7 @@ Option | Description
 **pre** | Number of periods before treatment to include in the estimation (does not apply to *att*)
 **post** | Number of periods after treatment to include in the estimation
 **ipw** | Inverse probability weighting following Abadie (2005)
+**reps** | Number of repetitions for boostrap (default = 199)
 
 ## Remarks
 
