@@ -20,9 +20,9 @@ d KW: treatment effects
 d KW: difference in differences
 d KW: att
 d
-d Requires: Stata version ??
+d Requires: Stata version 16
 d
-d Distribution-Date: 20221209
+d Distribution-Date: 20230307
 d
 
 f attgt.ado

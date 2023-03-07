@@ -1,6 +1,6 @@
-*! version 0.3.0 09dec2022
+*! version 0.4.0 07mar2023
 program attgt, eclass
-	syntax varlist [if] [in], treatment(varname) [ipw(varlist)]	[aggregate(string)] [absorb(varlist)] [pre(integer 999)] [post(integer 999)] [reps(int 199)] [notyet] [debug] [cluster(varname)] [limitcontrol(string)] [weightprefix(string)] [treatment2(varname)]
+	syntax varlist [if] [in], treatment(varname) [ipw(varlist)]	[aggregate(string)] [absorb(varlist)] [pre(integer 999)] [post(integer 999)] [reps(int 199)] [notyet] [debug] [cluster(varname)] [weightprefix(string)] [treatment2(varname)]
 	marksample touse
 
 	* boostrap
@@ -26,22 +26,15 @@ program attgt, eclass
 	markout `touse' `i' `time' `treatment' `varlist' `ipw'
 
 	if ("`treatment2'" != "") {
-		capture assert "`limitcontrol'`tyet'" == ""
+		capture assert "`tyet'" == ""
 		if _rc {
-			display in red "limitcontrol and notyet incompatible with treatment2"
+			display in red "notyet incompatible with treatment2"
 			error 9
 		}
 		tempvar group2
 		quietly egen `group2' = min(cond(`treatment2', `time'-1, .)) if `touse', by(`i')
 		* FIXME: range of group2 may not be the same as group. what to do with these treatment times?
 	}
-
-	* limitcontrol option limits control observations to satisfy "if `limitcontrol'" both in g and in t
-	if ("`limitcontrol'"=="") {
-		local limitcontrol 1
-	}
-	tempvar lc_var
-	quietly generate byte `lc_var' = (`limitcontrol')
 
 	* test that cluster embeds ivar
 	if ("`cluster'"!="") {
@@ -113,9 +106,23 @@ program attgt, eclass
 	if ("`ipw'" != "") {
 		tempvar TD_global phat_global
 		tempname AIC_global
-		quietly generate `TD_global' = (`group' == `time') if ((`limitcontrol') | (`group' == `time')) & `touse'
-	 	capture probit `TD_global' `ipw' i.`time' if ((`limitcontrol') | (`group' == `time')) & `touse'
-		quietly predict `phat_global' if ((`limitcontrol') | (`group' == `time')) & `touse', pr
+		if ("`tyet'"=="") {
+			if "`treatment2'" != "" {
+				local control (`group2'==`time')
+			}
+			else {
+				* never treated
+				local control missing(`group')
+			}
+		}
+		else {
+			* not yet treated
+			local control (missing(`group') | (`group' > `time'))
+		}
+		* NB: without limitcontrol this was bad because included post-treatment years as control
+		quietly generate `TD_global' = (`group' == `time') if (`control' | (`group' == `time')) & `touse'
+	 	capture probit `TD_global' `ipw' i.`time' if (`control' | (`group' == `time')) & `touse'
+		quietly predict `phat_global' if (`control' | (`group' == `time')) & `touse', pr
 	}
 	foreach g in `gs' {
 		if ("`weightprefix'" != "") {
@@ -129,24 +136,18 @@ program attgt, eclass
 			tempvar TD phat ph2 ph3
 			tempname AIC
 			local treated (`group'==`g')
-			if ("`limitcontrol'" != "") {
-				local lc (`lc_var' & !missing(`lc_var') & `time'==`g')
-			}
-			else {
-				local lc 1
-			}
 			if ("`tyet'"=="") {
 				if "`treatment2'" != "" {
 					local control (`group2'==`g')
 				}
 				else {
 					* never treated
-					local control missing(`group') & (`lc')
+					local control missing(`group')
 				}
 			}
 			else {
-					* not yet treated
-					local control (missing(`group') | (`group' > `g')) & (`lc')
+				* not yet treated
+				local control (missing(`group') | (`group' > `g'))
 			}
 			quietly generate byte `TD' = `treated'
 		 	capture probit `TD' `ipw' if (`treated' | `control') & `touse' & (`time' == `g')
@@ -173,16 +174,6 @@ program attgt, eclass
 			mata: st_local("leadlag1", lead_lag(`g', `t'))
 			mata: st_local("leadlag2", lead_lag(`t', `g'))
 			local timing (`time'==`g' & `leadlag1'.`time'==`t') | (`time'==`t' & `leadlag2'.`time'==`g')
-			if ("`limitcontrol'" != "") {
-				local lc (`lc_var' & `leadlag1'.`lc_var' ///
-					& !missing(`lc_var', `leadlag1'.`lc_var') & `time'==`g') ///
-					| (`lc_var' & `leadlag2'.`lc_var' ///
-					& !missing(`lc_var', `leadlag2'.`lc_var') & `time'==`t')
-			}
-			else {
-				local lc 1
-			}
-
 			local treated (`group'==`g') & (`timing')
 			if ("`tyet'"=="") {
 				if "`treatment2'" != "" {
@@ -190,12 +181,12 @@ program attgt, eclass
 				}
 				else {
 					* never treated
-					local control missing(`group') & (`timing') & (`lc')
+					local control missing(`group') & (`timing')
 				}
 			}
 			else {
-					* not yet treated
-					local control (missing(`group') | (`group' > max(`g', `t'))) & (`timing') & (`lc')
+				* not yet treated
+				local control (missing(`group') | (`group' > max(`g', `t'))) & (`timing')
 			}
 
 			quietly count if `treated' & `touse'
