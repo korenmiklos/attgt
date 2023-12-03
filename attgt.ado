@@ -12,7 +12,7 @@ program attgt, eclass
 	assert inlist("`aggregate'", "gt", "e", "att", "prepost")
 	if ("`aggregate'"=="att") {
 		* if we only compute ATT, no need to check pre-trends
-		local pre 0
+		local pre 1
 	}
 
 	* read panel structure
@@ -58,8 +58,8 @@ program attgt, eclass
 	local min_g = r(min)
 	local max_g = r(max)
 	* feasible event windows
-	local max_pre = min(`max_g' - `min_time', `pre')
-	local max_post = min(`max_time' - `min_g', `post')
+	local max_pre = min(`max_g'-`min_time'+1, `pre')
+	local max_post = min(`max_time'-`min_g'-1, `post')
 	
 	* estimate ATT(g,t) as eq 2.6 in https://pedrohcgs.github.io/files/Callaway_SantAnna_2020.pdf
 	quietly levelsof `group' if `group' > `min_time', local(gs)
@@ -70,7 +70,8 @@ program attgt, eclass
 	display "Generating weights..."
 	foreach g in `gs' {
 		foreach t in `ts' {
-		if (`g'!=`t') & (`g'>`min_time') & (`t' - `g' <= `post') & (`g' - `t' <= `pre') {
+		if (`g'>`min_time') & (`t'-`g'-1 <= `post') & (`g'-`t'+1 <= `pre') {
+			local eventtime = `t' - `g' - 1
 			* within (g,t), panel has to be balanced
 			mata: st_local("leadlag1", lead_lag(`g', `t'))
 			mata: st_local("leadlag2", lead_lag(`t', `g'))
@@ -91,14 +92,24 @@ program attgt, eclass
 			}
 
 			quietly count if `treated'
-			local n_treated = r(N)/2
+			local n_treated = r(N)
 			quietly count if `control'
-			local n_control = r(N)/2
+			local n_control = r(N)
+			if (`eventtime' != -1) {
+				* every period when g !=t is counted twice
+				local n_control = `n_control'/2
+				local n_treated = `n_treated'/2
+			}
 			local n_`g'_`t' = `n_treated' * `n_control' / (`n_treated' + `n_control')
 
 			tempvar treated_`g'_`t' control_`g'_`t'
 			quietly generate `treated_`g'_`t'' = cond(`time'==`t', +1/`n_treated', -1/`n_treated') if `treated'
 			quietly generate `control_`g'_`t'' = cond(`time'==`t', +1/`n_control', -1/`n_control') if `control'
+			if (`eventtime' == -1) {
+				* no effect can be estimated when g = t
+				quietly replace `treated_`g'_`t'' = 0 if `treated'
+				quietly replace `control_`g'_`t'' = 0 if `control'
+			}
 		}
 		}
 	}
@@ -112,7 +123,7 @@ program attgt, eclass
 			quietly generate `event_m`e'' = 0
 			quietly generate `wce_m`e'' = 0
 			foreach g in `gs' {
-				local t = `g' - `e'
+				local t = `g' - `e' + 1
 				if (`t' >= `min_time') & ("`n_`g'_`t''" != "") {
 					quietly replace `event_m`e'' = `event_m`e'' + `n_`g'_`t''*`treated_`g'_`t'' if !missing(`treated_`g'_`t'')
 					quietly replace `wce_m`e'' = `wce_m`e'' + `n_`g'_`t''*`control_`g'_`t'' if !missing(`control_`g'_`t'')
@@ -123,23 +134,15 @@ program attgt, eclass
 			quietly replace `wce_m`e'' = `wce_m`e'' / `n_e' 
 			local tweights `tweights' event_m`e'
 			local cweights `cweights' wce_m`e'
-			local coefnames `coefnames' `=-`e'-1'
+			local coefnames `coefnames' `=-`e''
 		}
-		* save a coefficient of zero
-		tempvar event_0 wce_0
-		quietly generate `event_0' = 0 
-		quietly generate `wce_0' = 0
-		local tweights `tweights' event_0
-		local cweights `cweights' wce_0
-		local coefnames `coefnames' -1
-
-		forvalues e = 1/`max_post' {
+		forvalues e = 0/`max_post' {
 			scalar `n_e' = 0
 			tempvar event_`e' wce_`e'
 			quietly generate `event_`e'' = 0
 			quietly generate `wce_`e'' = 0
 			foreach g in `gs' {
-				local t = `g' + `e'
+				local t = `g' + `e' + 1
 				if (`t' <= `max_time') & ("`n_`g'_`t''" != "") {
 					quietly replace `event_`e'' = `event_`e'' + `n_`g'_`t''*`treated_`g'_`t'' if !missing(`treated_`g'_`t'') 
 					quietly replace `wce_`e'' = `wce_`e'' + `n_`g'_`t''*`control_`g'_`t'' if !missing(`control_`g'_`t'')
@@ -150,10 +153,9 @@ program attgt, eclass
 			quietly replace `wce_`e'' = `wce_`e'' / `n_e' 
 			local tweights `tweights' event_`e'
 			local cweights `cweights' wce_`e'
-			local coefnames `coefnames' `=`e'-1'
+			local coefnames `coefnames' `=`e''
 		}
 	}
-	display "`coefnames'"
 	if ("`aggregate'"=="gt") {
 			foreach g in `gs' {
 				foreach t in `ts' {
