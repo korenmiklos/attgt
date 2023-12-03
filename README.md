@@ -1,3 +1,18 @@
+---
+author: Koren, Miklós (https://koren.mk)
+date: 2023-12-03
+version: 0.4.1
+title: ATTGT - Average Treatment Effects with Staggered Treatment
+description: |
+    `att` computes average treatment effect parameters in Difference in Differences setups with more than two periods and with variation in treatment timing using the methods developed in Callaway and Sant'Anna (2021) <doi:10.1016/j.jeconom.2020.12.001>. The main parameters are group-time average treatment effects which are the average treatment effect for a particular group at a particular time. These can be aggregated into a fewer number of treatment effect parameters, and the package deals with the cases where there is selective treatment timing, dynamic treatment effects, calendar time effects, or combinations of these.
+url: https://github.com/korenmiklos/attgt
+requires: Stata version 16
+files: 
+    - attgt.ado
+    - attgt.sthlp
+    - LICENSE
+    - testdata.dta 
+---
 # `attgt` Average Treatment Effects with Staggered Treatment
 
 # Syntax
