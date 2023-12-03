@@ -203,6 +203,7 @@ program attgt, eclass
 		}
 	}
 
+	local coefnames "" 
 	if ("`aggregate'"=="e") {
 		tempname n_e
 		forvalues e = `max_pre'(-1)1 {
@@ -222,7 +223,16 @@ program attgt, eclass
 			quietly replace `wce_m`e'' = `wce_m`e'' / `n_e' 
 			local tweights `tweights' event_m`e'
 			local cweights `cweights' wce_m`e'
+			local coefnames `coefnames' `=-`e'-1'
 		}
+		* save a coefficient of zero
+		tempvar event_0 wce_0
+		quietly generate `event_0' = 0 
+		quietly generate `wce_0' = 0
+		local tweights `tweights' event_0
+		local cweights `cweights' wce_0
+		local coefnames `coefnames' -1
+
 		forvalues e = 1/`max_post' {
 			scalar `n_e' = 0
 			tempvar event_`e' wce_`e'
@@ -240,8 +250,10 @@ program attgt, eclass
 			quietly replace `wce_`e'' = `wce_`e'' / `n_e' 
 			local tweights `tweights' event_`e'
 			local cweights `cweights' wce_`e'
+			local coefnames `coefnames' `=`e'-1'
 		}
 	}
+	display "`coefnames'"
 	if ("`aggregate'"=="gt") {
 			foreach g in `gs' {
 				foreach t in `ts' {
@@ -346,7 +358,7 @@ program attgt, eclass
 			matrix `b' = nullmat(`b'), `att'
 			matrix `V' = nullmat(`V'), `v'
 			local eqname `eqname' `y'
-			local colname `colname' `tw'
+			local colname `colname' `coefnames'
 		}
 	}
 	matrix `V' = diag(`V')
@@ -364,7 +376,6 @@ program attgt, eclass
 	ereturn local cmd attgt
 	ereturn local cmdline attgt `0'
 	ereturn local treatment `treatment'
-	display "Callaway Sant'Anna (2021)"
 	* Use Stata's built-in but undocumented estimation display
 	_prefix_display
 
