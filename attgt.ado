@@ -1,6 +1,6 @@
 *! version 0.4.1 03dec2023
 program attgt, eclass
-	syntax varlist, treatment(varname) [ipw(varlist)]	[aggregate(string)] [pre(integer 999)] [post(integer 999)] [reps(int 199)] [notyet] [debug] [cluster(varname)] [weightprefix(string)] [treatment2(varname)]
+	syntax varlist, treatment(varname) [aggregate(string)] [pre(integer 999)] [post(integer 999)] [reps(int 199)] [notyet] [debug] [cluster(varname)] [treatment2(varname)]
 
 	* boostrap
 	local B `reps'
@@ -14,9 +14,6 @@ program attgt, eclass
 		* if we only compute ATT, no need to check pre-trends
 		local pre 0
 	}
-
-	tempvar ipweight
-	quietly generate `ipweight' = 1
 
 	* read panel structure
 	xtset
@@ -68,104 +65,10 @@ program attgt, eclass
 	quietly levelsof `group' if `group' > `min_time', local(gs)
 	quietly levelsof `time', local(ts)
 
-	* check that valid weights exist for each treatment group
-	if ("`weightprefix'" != "") {
-		foreach g in `gs' {
-			confirm numeric variable `weightprefix'`g'
-			capture assert `weightprefix'`g' >= 0, fast
-			if _rc {
-				display in red "Weights must be non-negative. Offending weight:  `weightprefix'`g'"
-				error 9
-			}
-			tempvar i1 i2
-			* check that weight does not vary within ivar
-			quietly egen `i1' = group(`i')
-			quietly egen `i2' = group(`i' `weightprefix'`g')
-			quietly summarize `i1'
-			local m1 = r(max)
-			quietly summarize `i2'
-			local m2 = r(max)
-			capture assert `m1' == `m2'
-			if _rc {
-				display in red "Weights cannot vary within `i'. Offending weight:  `weightprefix'`g'"
-				error 9
-			}
-			drop `i1' `i2'
-		}
-	}
-	else {
-		tempvar one
-		quietly generate byte `one' = 1
-	}
-
 	* FIXME: check that g = min_time is not used as control
 	* create design matrix
 	display "Generating weights..."
-	if ("`ipw'" != "") {
-		tempvar TD_global phat_global
-		tempname AIC_global
-		if ("`tyet'"=="") {
-			if "`treatment2'" != "" {
-				local control (`group2'==`time')
-			}
-			else {
-				* never treated
-				local control missing(`group')
-			}
-		}
-		else {
-			* not yet treated
-			local control (missing(`group') | (`group' > `time'))
-		}
-		* NB: without limitcontrol this was bad because included post-treatment years as control
-		quietly generate `TD_global' = (`group' == `time') if (`control' | (`group' == `time'))
-	 	capture probit `TD_global' `ipw' i.`time' if (`control' | (`group' == `time'))
-		quietly predict `phat_global' if (`control' | (`group' == `time')), pr
-	}
 	foreach g in `gs' {
-		if ("`weightprefix'" != "") {
-			local cweight `weightprefix'`g'
-		}
-		else {
-			local cweight `one'
-		}
-		* FIXME: this only calculate IPW for one set of control group.
-		if ("`ipw'" != "") {
-			tempvar TD phat ph2 ph3
-			tempname AIC
-			local treated (`group'==`g')
-			if ("`tyet'"=="") {
-				if "`treatment2'" != "" {
-					local control (`group2'==`g')
-				}
-				else {
-					* never treated
-					local control missing(`group')
-				}
-			}
-			else {
-				* not yet treated
-				local control (missing(`group') | (`group' > `g'))
-			}
-			quietly generate byte `TD' = `treated'
-		 	capture probit `TD' `ipw' if (`treated' | `control') & (`time' == `g')
-			* only use well fitting probits
-			if (_rc==0) & (e(p) < 0.05) {
-				quietly predict `phat' if `control' & (`time' == `g'), pr
-				* if probit predicts failure or success perfectly, use boundary values
-				quietly egen `ph2' = mean(`TD') if (`treated' | `control') & (`time' == `g') & missing(`phat')
-				quietly replace `phat' = `ph2' if `control' & (`time' == `g') & missing(`phat')
-				* trim values to not give extreme weights to any one observation
-				quietly replace `phat' = 0.999 if (`phat' > 0.999 & !missing(`phat')) & `control' & (`time' == `g')
-			}
-			* otherwise stick to globally estimated probit
-			else {
-				* if cannot estimate propensity scores due to perfect fit of regression, no observations will be used as a control
-				quietly generate `phat' = `phat_global' if `control'
-			}
-			quietly egen `ph3' = max(`phat' / (1 - `phat')) if `control', by(`i')
-			quietly replace `ipweight' = `ph3' if `control'
-		}
 		foreach t in `ts' {
 		if (`g'!=`t') & (`g'>`min_time') & (`t' - `g' <= `post') & (`g' - `t' <= `pre') {
 			* within (g,t), panel has to be balanced
@@ -189,16 +92,13 @@ program attgt, eclass
 
 			quietly count if `treated'
 			local n_treated = r(N)/2
-			tempvar sumw_control ctrl
-			quietly generate byte `ctrl' = `control'
-			quietly egen `sumw_control' = total(`ipweight') if `ctrl', by(`time')
-			quietly count if `control' & `ipweight'!=0 & !missing(`ipweight')
+			quietly count if `control'
 			local n_control = r(N)/2
 			local n_`g'_`t' = `n_treated' * `n_control' / (`n_treated' + `n_control')
 
 			tempvar treated_`g'_`t' control_`g'_`t'
 			quietly generate `treated_`g'_`t'' = cond(`time'==`t', +1/`n_treated', -1/`n_treated') if `treated'
-			quietly generate `control_`g'_`t'' = cond(`time'==`t', `ipweight'/`sumw_control', -`ipweight'/`sumw_control') if `control'
+			quietly generate `control_`g'_`t'' = cond(`time'==`t', +1/`n_control', -1/`n_control') if `control'
 		}
 		}
 	}
@@ -358,15 +258,14 @@ program attgt, eclass
 			matrix `b' = nullmat(`b'), `att'
 			matrix `V' = nullmat(`V'), `v'
 			local eqname `eqname' `y'
-			local colname `colname' `coefnames'
 		}
 	}
 	matrix `V' = diag(`V')
-	matrix colname `b' = `colname'
+	matrix colname `b' = `coefnames'
 	matrix coleq   `b' = `eqname'
-	matrix colname `V' = `colname'
+	matrix colname `V' = `coefnames'
 	matrix coleq   `V' = `eqname'
-	matrix rowname `V' = `colname'
+	matrix rowname `V' = `coefnames'
 	matrix roweq   `V' = `eqname'
 
 	quietly count if `esample' == 1
