@@ -165,6 +165,7 @@ program attgt, eclass
 				}
 				}
 			}
+			local coefnames `tweights'
 	}
 	if ("`aggregate'"=="att") {
 			tempname n
@@ -174,7 +175,7 @@ program attgt, eclass
 			scalar `n' = 0
 			foreach g in `gs' {
 				foreach t in `ts' {
-				if (`g' < `t') & (`g'>`min_time') & (`t' - `g' <= `post') & ("`n_`g'_`t''" != "") {
+				if (`g' < `t') & (`g'>`min_time') & (`t' - `g' - 1 <= `post') & ("`n_`g'_`t''" != "") {
 					quietly replace `att' = `att' + `n_`g'_`t''*`treated_`g'_`t'' if !missing(`treated_`g'_`t'')
 					quietly replace `control' = `control' + `n_`g'_`t''*`control_`g'_`t'' if !missing(`control_`g'_`t'')
 					scalar `n' = `n' + `n_`g'_`t''
@@ -185,6 +186,7 @@ program attgt, eclass
 			quietly replace `control' = `control' / `n' 
 			local tweights att
 			local cweights control
+			local coefnames `tweights'
 	}
 	if ("`aggregate'"=="prepost") {
 		tempname n1 n2
