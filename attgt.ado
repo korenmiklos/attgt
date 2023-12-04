@@ -1,6 +1,11 @@
 *! version 0.4.1 03dec2023
 program attgt, eclass
-	syntax varlist, treatment(varname) [aggregate(string)] [pre(integer 999)] [post(integer 999)] [reps(int 199)] [notyet] [debug] [cluster(varname)] [treatment2(varname)]
+	syntax varlist, treatment(varname) [aggregate(string)] [pre(integer 999)] [post(integer 999)] [reps(int 199)] [notyet] [debug] [cluster(varname)] [treatment2(varname)] [baseline(string)]
+
+	* default baseline is -1
+	if ("`baseline'"=="") {
+		local baseline -1
+	}
 
 	* boostrap
 	local B `reps'
@@ -154,6 +159,24 @@ program attgt, eclass
 			local tweights `tweights' event_`e'
 			local cweights `cweights' wce_`e'
 			local coefnames `coefnames' `=`e''
+		}
+		* subtract the weights of the baseline period
+		tempvar t_baseline c_baseline
+		if (`baseline' < 0) {
+			local baseline_index  m`=-`baseline''
+		}
+		else {
+			local baseline_index  `baseline'
+		}
+		quietly generate `t_baseline' = `event_`baseline_index''
+		quietly generate `c_baseline' = `wce_`baseline_index''
+		forvalues e = `max_pre'(-1)1 {
+			quietly replace `event_m`e'' = `event_m`e'' - `t_baseline'
+			quietly replace `wce_m`e'' = `wce_m`e'' - `c_baseline'
+		}
+		forvalues e = 0/`max_post' {
+			quietly replace `event_`e'' = `event_`e'' - `t_baseline'
+			quietly replace `wce_`e'' = `wce_`e'' - `c_baseline'
 		}
 	}
 	if ("`aggregate'"=="gt") {
