@@ -8,14 +8,14 @@
 {marker syntax}{...}
 {title:Syntax}
 
-{text}{phang2}{cmd:attgt} {it:depvars}, {bf:treatment}({it:varname}) {bf:aggregate}({it:method}) [{bf:pre}(#) {bf:post}(#) {bf:ipw}({it:varlist}) {bf:reps}(#)]{p_end}
+{text}{phang2}{cmd:attgt} {it:depvars}, {bf:treatment}({it:varname}) {bf:aggregate}({it:method}) [{bf:pre}(#) {bf:post}(#) baseline(#) {bf:reps}(#)]{p_end}
 
 
 {pstd}{cmd:att} computes average treatment effect parameters in Difference in Differences setups with more than two periods and with variation in treatment timing using the methods developed in Callaway and Sant'Anna (2021) {browse "doi:10.1016/j.jeconom.2020.12.001":doi:10.1016/j.jeconom.2020.12.001}. The main parameters are group-time average treatment effects which are the average treatment effect for a particular group at a particular time. These can be aggregated into a fewer number of treatment effect parameters, and the package deals with the cases where there is selective treatment timing, dynamic treatment effects, calendar time effects, or combinations of these.{p_end}
 
 {pstd}The package can be installed with{p_end}
 
-{phang2}{cmd}. net install attgt, from(https://raw.githubusercontent.com/korenmiklos/attgt/v0.4.0/)
+{phang2}{cmd}. net install attgt, from(https://raw.githubusercontent.com/korenmiklos/attgt/main/)
 
 
 {marker options}{...}
@@ -58,6 +58,7 @@
 {synopt:{bf:post}}Number of periods after treatment to include in the estimation{p_end}
 {synopt:{bf:ipw}}Inverse probability weighting following Abadie (2005){p_end}
 {synopt:{bf:reps}}Number of repetitions for boostrap (default = 199){p_end}
+{synopt:{bf:baseline}}Baseline period to compare ATET against (default = -1){p_end}
 {synoptline}
 
 

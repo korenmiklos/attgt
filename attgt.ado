@@ -1,6 +1,11 @@
-*! version 0.4.0 07mar2023
+*! version 0.5.0 11dec2023
 program attgt, eclass
-	syntax varlist, treatment(varname) [ipw(varlist)]	[aggregate(string)] [pre(integer 999)] [post(integer 999)] [reps(int 199)] [notyet] [debug] [cluster(varname)] [weightprefix(string)] [treatment2(varname)]
+	syntax varlist, treatment(varname) [aggregate(string)] [pre(integer 999)] [post(integer 999)] [reps(int 199)] [notyet] [debug] [cluster(varname)] [treatment2(varname)] [baseline(string)]
+
+	* default baseline is -1
+	if ("`baseline'"=="") {
+		local baseline -1
+	}
 
 	* boostrap
 	local B `reps'
@@ -12,11 +17,8 @@ program attgt, eclass
 	assert inlist("`aggregate'", "gt", "e", "att", "prepost")
 	if ("`aggregate'"=="att") {
 		* if we only compute ATT, no need to check pre-trends
-		local pre 0
+		local pre 1
 	}
-
-	tempvar ipweight
-	quietly generate `ipweight' = 1
 
 	* read panel structure
 	xtset
@@ -61,113 +63,20 @@ program attgt, eclass
 	local min_g = r(min)
 	local max_g = r(max)
 	* feasible event windows
-	local max_pre = min(`max_g' - `min_time', `pre')
-	local max_post = min(`max_time' - `min_g', `post')
+	local max_pre = min(`max_g'-`min_time'+1, `pre')
+	local max_post = min(`max_time'-`min_g'-1, `post')
 	
 	* estimate ATT(g,t) as eq 2.6 in https://pedrohcgs.github.io/files/Callaway_SantAnna_2020.pdf
 	quietly levelsof `group' if `group' > `min_time', local(gs)
 	quietly levelsof `time', local(ts)
 
-	* check that valid weights exist for each treatment group
-	if ("`weightprefix'" != "") {
-		foreach g in `gs' {
-			confirm numeric variable `weightprefix'`g'
-			capture assert `weightprefix'`g' >= 0, fast
-			if _rc {
-				display in red "Weights must be non-negative. Offending weight:  `weightprefix'`g'"
-				error 9
-			}
-			tempvar i1 i2
-			* check that weight does not vary within ivar
-			quietly egen `i1' = group(`i')
-			quietly egen `i2' = group(`i' `weightprefix'`g')
-			quietly summarize `i1'
-			local m1 = r(max)
-			quietly summarize `i2'
-			local m2 = r(max)
-			capture assert `m1' == `m2'
-			if _rc {
-				display in red "Weights cannot vary within `i'. Offending weight:  `weightprefix'`g'"
-				error 9
-			}
-			drop `i1' `i2'
-		}
-	}
-	else {
-		tempvar one
-		quietly generate byte `one' = 1
-	}
-
 	* FIXME: check that g = min_time is not used as control
 	* create design matrix
 	display "Generating weights..."
-	if ("`ipw'" != "") {
-		tempvar TD_global phat_global
-		tempname AIC_global
-		if ("`tyet'"=="") {
-			if "`treatment2'" != "" {
-				local control (`group2'==`time')
-			}
-			else {
-				* never treated
-				local control missing(`group')
-			}
-		}
-		else {
-			* not yet treated
-			local control (missing(`group') | (`group' > `time'))
-		}
-		* NB: without limitcontrol this was bad because included post-treatment years as control
-		quietly generate `TD_global' = (`group' == `time') if (`control' | (`group' == `time'))
-	 	capture probit `TD_global' `ipw' i.`time' if (`control' | (`group' == `time'))
-		quietly predict `phat_global' if (`control' | (`group' == `time')), pr
-	}
 	foreach g in `gs' {
-		if ("`weightprefix'" != "") {
-			local cweight `weightprefix'`g'
-		}
-		else {
-			local cweight `one'
-		}
-		* FIXME: this only calculate IPW for one set of control group.
-		if ("`ipw'" != "") {
-			tempvar TD phat ph2 ph3
-			tempname AIC
-			local treated (`group'==`g')
-			if ("`tyet'"=="") {
-				if "`treatment2'" != "" {
-					local control (`group2'==`g')
-				}
-				else {
-					* never treated
-					local control missing(`group')
-				}
-			}
-			else {
-				* not yet treated
-				local control (missing(`group') | (`group' > `g'))
-			}
-			quietly generate byte `TD' = `treated'
-		 	capture probit `TD' `ipw' if (`treated' | `control') & (`time' == `g')
-			* only use well fitting probits
-			if (_rc==0) & (e(p) < 0.05) {
-				quietly predict `phat' if `control' & (`time' == `g'), pr
-				* if probit predicts failure or success perfectly, use boundary values
-				quietly egen `ph2' = mean(`TD') if (`treated' | `control') & (`time' == `g') & missing(`phat')
-				quietly replace `phat' = `ph2' if `control' & (`time' == `g') & missing(`phat')
-				* trim values to not give extreme weights to any one observation
-				quietly replace `phat' = 0.999 if (`phat' > 0.999 & !missing(`phat')) & `control' & (`time' == `g')
-			}
-			* otherwise stick to globally estimated probit
-			else {
-				* if cannot estimate propensity scores due to perfect fit of regression, no observations will be used as a control
-				quietly generate `phat' = `phat_global' if `control'
-			}
-			quietly egen `ph3' = max(`phat' / (1 - `phat')) if `control', by(`i')
-			quietly replace `ipweight' = `ph3' if `control'
-		}
 		foreach t in `ts' {
-		if (`g'!=`t') & (`g'>`min_time') & (`t' - `g' <= `post') & (`g' - `t' <= `pre') {
+		if (`g'>`min_time') & (`t'-`g'-1 <= `post') & (`g'-`t'+1 <= `pre') {
+			local eventtime = `t' - `g' - 1
 			* within (g,t), panel has to be balanced
 			mata: st_local("leadlag1", lead_lag(`g', `t'))
 			mata: st_local("leadlag2", lead_lag(`t', `g'))
@@ -188,21 +97,29 @@ program attgt, eclass
 			}
 
 			quietly count if `treated'
-			local n_treated = r(N)/2
-			tempvar sumw_control ctrl
-			quietly generate byte `ctrl' = `control'
-			quietly egen `sumw_control' = total(`ipweight') if `ctrl', by(`time')
-			quietly count if `control' & `ipweight'!=0 & !missing(`ipweight')
-			local n_control = r(N)/2
+			local n_treated = r(N)
+			quietly count if `control'
+			local n_control = r(N)
+			if (`eventtime' != -1) {
+				* every period when g !=t is counted twice
+				local n_control = `n_control'/2
+				local n_treated = `n_treated'/2
+			}
 			local n_`g'_`t' = `n_treated' * `n_control' / (`n_treated' + `n_control')
 
 			tempvar treated_`g'_`t' control_`g'_`t'
 			quietly generate `treated_`g'_`t'' = cond(`time'==`t', +1/`n_treated', -1/`n_treated') if `treated'
-			quietly generate `control_`g'_`t'' = cond(`time'==`t', `ipweight'/`sumw_control', -`ipweight'/`sumw_control') if `control'
+			quietly generate `control_`g'_`t'' = cond(`time'==`t', +1/`n_control', -1/`n_control') if `control'
+			if (`eventtime' == -1) {
+				* no effect can be estimated when g = t
+				quietly replace `treated_`g'_`t'' = 0 if `treated'
+				quietly replace `control_`g'_`t'' = 0 if `control'
+			}
 		}
 		}
 	}
 
+	local coefnames "" 
 	if ("`aggregate'"=="e") {
 		tempname n_e
 		forvalues e = `max_pre'(-1)1 {
@@ -211,7 +128,7 @@ program attgt, eclass
 			quietly generate `event_m`e'' = 0
 			quietly generate `wce_m`e'' = 0
 			foreach g in `gs' {
-				local t = `g' - `e'
+				local t = `g' - `e' + 1
 				if (`t' >= `min_time') & ("`n_`g'_`t''" != "") {
 					quietly replace `event_m`e'' = `event_m`e'' + `n_`g'_`t''*`treated_`g'_`t'' if !missing(`treated_`g'_`t'')
 					quietly replace `wce_m`e'' = `wce_m`e'' + `n_`g'_`t''*`control_`g'_`t'' if !missing(`control_`g'_`t'')
@@ -222,14 +139,15 @@ program attgt, eclass
 			quietly replace `wce_m`e'' = `wce_m`e'' / `n_e' 
 			local tweights `tweights' event_m`e'
 			local cweights `cweights' wce_m`e'
+			local coefnames `coefnames' `=-`e''
 		}
-		forvalues e = 1/`max_post' {
+		forvalues e = 0/`max_post' {
 			scalar `n_e' = 0
 			tempvar event_`e' wce_`e'
 			quietly generate `event_`e'' = 0
 			quietly generate `wce_`e'' = 0
 			foreach g in `gs' {
-				local t = `g' + `e'
+				local t = `g' + `e' + 1
 				if (`t' <= `max_time') & ("`n_`g'_`t''" != "") {
 					quietly replace `event_`e'' = `event_`e'' + `n_`g'_`t''*`treated_`g'_`t'' if !missing(`treated_`g'_`t'') 
 					quietly replace `wce_`e'' = `wce_`e'' + `n_`g'_`t''*`control_`g'_`t'' if !missing(`control_`g'_`t'')
@@ -240,6 +158,25 @@ program attgt, eclass
 			quietly replace `wce_`e'' = `wce_`e'' / `n_e' 
 			local tweights `tweights' event_`e'
 			local cweights `cweights' wce_`e'
+			local coefnames `coefnames' `=`e''
+		}
+		* subtract the weights of the baseline period
+		tempvar t_baseline c_baseline
+		if (`baseline' < 0) {
+			local baseline_index  m`=-`baseline''
+		}
+		else {
+			local baseline_index  `baseline'
+		}
+		quietly generate `t_baseline' = `event_`baseline_index''
+		quietly generate `c_baseline' = `wce_`baseline_index''
+		forvalues e = `max_pre'(-1)1 {
+			quietly replace `event_m`e'' = `event_m`e'' - `t_baseline'
+			quietly replace `wce_m`e'' = `wce_m`e'' - `c_baseline'
+		}
+		forvalues e = 0/`max_post' {
+			quietly replace `event_`e'' = `event_`e'' - `t_baseline'
+			quietly replace `wce_`e'' = `wce_`e'' - `c_baseline'
 		}
 	}
 	if ("`aggregate'"=="gt") {
@@ -251,6 +188,7 @@ program attgt, eclass
 				}
 				}
 			}
+			local coefnames `tweights'
 	}
 	if ("`aggregate'"=="att") {
 			tempname n
@@ -260,7 +198,7 @@ program attgt, eclass
 			scalar `n' = 0
 			foreach g in `gs' {
 				foreach t in `ts' {
-				if (`g' < `t') & (`g'>`min_time') & (`t' - `g' <= `post') & ("`n_`g'_`t''" != "") {
+				if (`g' < `t') & (`g'>`min_time') & (`t' - `g' - 1 <= `post') & ("`n_`g'_`t''" != "") {
 					quietly replace `att' = `att' + `n_`g'_`t''*`treated_`g'_`t'' if !missing(`treated_`g'_`t'')
 					quietly replace `control' = `control' + `n_`g'_`t''*`control_`g'_`t'' if !missing(`control_`g'_`t'')
 					scalar `n' = `n' + `n_`g'_`t''
@@ -271,6 +209,7 @@ program attgt, eclass
 			quietly replace `control' = `control' / `n' 
 			local tweights att
 			local cweights control
+			local coefnames `tweights'
 	}
 	if ("`aggregate'"=="prepost") {
 		tempname n1 n2
@@ -346,15 +285,14 @@ program attgt, eclass
 			matrix `b' = nullmat(`b'), `att'
 			matrix `V' = nullmat(`V'), `v'
 			local eqname `eqname' `y'
-			local colname `colname' `tw'
 		}
 	}
 	matrix `V' = diag(`V')
-	matrix colname `b' = `colname'
+	matrix colname `b' = `coefnames'
 	matrix coleq   `b' = `eqname'
-	matrix colname `V' = `colname'
+	matrix colname `V' = `coefnames'
 	matrix coleq   `V' = `eqname'
-	matrix rowname `V' = `colname'
+	matrix rowname `V' = `coefnames'
 	matrix roweq   `V' = `eqname'
 
 	quietly count if `esample' == 1
@@ -364,7 +302,6 @@ program attgt, eclass
 	ereturn local cmd attgt
 	ereturn local cmdline attgt `0'
 	ereturn local treatment `treatment'
-	display "Callaway Sant'Anna (2021)"
 	* Use Stata's built-in but undocumented estimation display
 	_prefix_display
 
