@@ -1,4 +1,4 @@
-*! version 0.4.1 03dec2023
+*! version 0.5.0 11dec2023
 program attgt, eclass
 	syntax varlist, treatment(varname) [aggregate(string)] [pre(integer 999)] [post(integer 999)] [reps(int 199)] [notyet] [debug] [cluster(varname)] [treatment2(varname)] [baseline(string)]
 
