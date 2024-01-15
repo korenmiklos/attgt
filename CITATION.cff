@@ -1,0 +1,15 @@
+
+cff-version: 1.2.0
+title: ATTGT - Average Treatment Effects with Staggered Treatment
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: 
+    family-names: 'Koren, Miklós (https://koren.mk)'
+identifiers:
+  - type: url
+    value: 'https://github.com/korenmiklos/attgt'
+version: 0.6.0
+date-released: '2024-01-15'

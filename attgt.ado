@@ -1,6 +1,6 @@
-*! version 0.5.0 11dec2023
+*! version 0.6.0 15jan2024
 program attgt, eclass
-	syntax varlist, treatment(varname) [aggregate(string)] [pre(integer 999)] [post(integer 999)] [reps(int 199)] [notyet] [debug] [cluster(varname)] [treatment2(varname)] [baseline(string)]
+	syntax varlist, treatment(varname) [aggregate(string)] [pre(integer 999)] [post(integer 999)] [reps(int 199)] [notyet] [debug] [cluster(varname)] [treatment2(varname)] [baseline(string)] [generate(string)]
 
 	* default baseline is -1
 	if ("`baseline'"=="") {
@@ -304,6 +304,26 @@ program attgt, eclass
 	ereturn local treatment `treatment'
 	* Use Stata's built-in but undocumented estimation display
 	_prefix_display
+
+	/*
+    Take the matrix of coefficients and upper and lower confidernce interval and put them in a frame. 
+    The name of the frame is in `generate'. If `generate' is empty, skip this step.
+    */
+
+    tempname coef lower upper
+    if ("`generate'" != "") {
+        capture frame drop `generate'
+        frame create `generate' time coef lower upper
+        forvalues t = -`pre'/`post' {
+            local i = `t' + `pre' + 1
+            scalar `coef' = `b'[1, `i']
+            scalar `lower' = `b'[1, `i'] + invnormal((100-`level')/200) * sqrt(`V'[`i', `i'])
+            scalar `upper' = `b'[1, `i'] - invnormal((100-`level')/200) * sqrt(`V'[`i', `i'])
+            frame post `generate' (`t') (`coef') (`lower') (`upper')
+        }
+        frame `generate': tsset time
+        frame `generate': format coef lower upper %9.3f
+    }
 
 end
 

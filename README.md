@@ -1,7 +1,7 @@
 ---
 author: Koren, Miklós (https://koren.mk)
-date: 2023-12-11
-version: 0.5.0
+date: 2024-01-15
+version: 0.6.0
 title: ATTGT - Average Treatment Effects with Staggered Treatment
 description: |
     `att` computes average treatment effect parameters in Difference in Differences setups with more than two periods and with variation in treatment timing using the methods developed in Callaway and Sant'Anna (2021) <doi:10.1016/j.jeconom.2020.12.001>. The main parameters are group-time average treatment effects which are the average treatment effect for a particular group at a particular time. These can be aggregated into a fewer number of treatment effect parameters, and the package deals with the cases where there is selective treatment timing, dynamic treatment effects, calendar time effects, or combinations of these.
@@ -51,12 +51,21 @@ Option | Description
 **ipw** | Inverse probability weighting following Abadie (2005)
 **reps** | Number of repetitions for boostrap (default = 199)
 **baseline** | Baseline period to compare ATET against (default = -1)
+**generate** (optional) | Name of the frame to store the coefficients and their confidence interval.
 
 ## Remarks
 
 The command requires a panel dataset declared by `xtset`. 
 
 The command also returns, as part of `e()`, the coefficients and standard errors. See `ereturn list` after running the command.
+
+If the `generate` option is used, the returned frame contains the following variables:
+- `time`: the time period relative to the baseline
+- `coef`: the estimated coefficient
+- `lower`: the lower bound of the 95% confidence interval
+- `upper`: the upper bound of the 95% confidence interval
+
+The frame is `tsset` by `time`, so `tsline` can be used to plot the event study.
 
 The command does not allow for `if` and `in` clauses. If you need to limit the sample, use
 ```
