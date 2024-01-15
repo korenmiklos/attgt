@@ -59,6 +59,7 @@
 {synopt:{bf:ipw}}Inverse probability weighting following Abadie (2005){p_end}
 {synopt:{bf:reps}}Number of repetitions for boostrap (default = 199){p_end}
 {synopt:{bf:baseline}}Baseline period to compare ATET against (default = -1){p_end}
+{synopt:{bf:generate} (optional)}Name of the frame to store the coefficients and their confidence interval.{p_end}
 {synoptline}
 
 
@@ -68,6 +69,16 @@
 {pstd}The command requires a panel dataset declared by {cmd:xtset}.{p_end}
 
 {pstd}The command also returns, as part of {cmd:e()}, the coefficients and standard errors. See {cmd:ereturn list} after running the command.{p_end}
+
+{pstd}If the {cmd:generate} option is used, the returned frame contains the following variables:{p_end}
+
+{text}{phang2}{cmd:time}: the time period relative to the baseline{p_end}
+{phang2}{cmd:coef}: the estimated coefficient{p_end}
+{phang2}{cmd:lower}: the lower bound of the 95% confidence interval{p_end}
+{phang2}{cmd:upper}: the upper bound of the 95% confidence interval{p_end}
+
+
+{pstd}The frame is {cmd:tsset} by {cmd:time}, so {cmd:tsline} can be used to plot the event study.{p_end}
 
 {pstd}The command does not allow for {cmd:if} and {cmd:in} clauses. If you need to limit the sample, use{p_end}
 
